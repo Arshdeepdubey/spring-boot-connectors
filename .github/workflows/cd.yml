@@ -1,0 +1,94 @@
+name: Java CD with Maven
+
+on:
+  push:
+    branches: [ "master", "develop" ]
+  workflow_run:
+    workflows: ["Java CI with Maven"]
+    types: [completed]
+    branches: [ "master", "develop" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    # Only run if the triggering workflow (CI) was successful or if this is a direct push
+    if: |
+      github.event_name == 'push' || 
+      (github.event.workflow_run.conclusion == 'success')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build Artifacts (Skip Tests)
+      run: |
+        mvn clean package \
+          -B \
+          -DskipTests \
+          --file pom.xml
+
+    - name: List Generated Artifacts
+      run: |
+        echo "=== JAR Artifacts ==="
+        find . -path "*/target/*.jar" -type f | grep -E "(rest-to-s3|s3-to-rest|rest-to-db)" || echo "No connector JARs found"
+        echo ""
+        echo "=== Full build artifacts ==="
+        ls -la target/ 2>/dev/null || echo "No target directory"
+        find . -path "*/target/*.jar" -type f
+
+    - name: Upload REST-to-S3 Connector Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rest-to-s3-connector
+        path: rest-to-s3-connector/target/rest-to-s3-connector.jar
+        retention-days: 30
+        if-no-files-found: warn
+
+    - name: Upload S3-to-REST Connector Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: s3-to-rest-connector
+        path: s3-to-rest-connector/target/s3-to-rest-connector.jar
+        retention-days: 30
+        if-no-files-found: warn
+
+    - name: Upload REST-to-DB Connector Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rest-to-db-connector
+        path: rest-to-db-connector/target/rest-to-db-connector.jar
+        retention-days: 30
+        if-no-files-found: warn
+
+    - name: Generate Deployment Report
+      run: |
+        echo "=== Deployment Report ===" > deployment-report.txt
+        echo "Deployment Timestamp: $(date)" >> deployment-report.txt
+        echo "Branch: ${{ github.ref }}" >> deployment-report.txt
+        echo "Commit SHA: ${{ github.sha }}" >> deployment-report.txt
+        echo "Commit Author: ${{ github.actor }}" >> deployment-report.txt
+        echo "" >> deployment-report.txt
+        echo "=== Artifacts Generated ===" >> deployment-report.txt
+        find . -path "*/target/*.jar" -type f | grep -E "(rest-to-s3|s3-to-rest|rest-to-db)" >> deployment-report.txt 2>&1 || echo "No connector artifacts found" >> deployment-report.txt
+        cat deployment-report.txt
+
+    - name: Upload Deployment Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-report
+        path: deployment-report.txt
+        retention-days: 30
+
+    - name: Deployment Status
+      run: |
+        echo "✅ Deployment artifacts generated successfully"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Triggered by: ${{ github.event_name }}"
