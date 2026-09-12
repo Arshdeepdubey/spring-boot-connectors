@@ -1,0 +1,10 @@
+connector:
+  source:
+    s3:
+      bucket: test-bucket
+  target:
+    rest:
+      url: http://localhost:8089/api/orders/relay
+  aws:
+    s3:
+      region: us-east-1

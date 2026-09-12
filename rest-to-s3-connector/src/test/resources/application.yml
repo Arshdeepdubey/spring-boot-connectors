@@ -1,0 +1,10 @@
+connector:
+  source:
+    rest:
+      url: http://localhost:8089/api/orders
+  target:
+    s3:
+      bucket: test-bucket
+  aws:
+    s3:
+      region: us-east-1
