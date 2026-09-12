@@ -1,0 +1,28 @@
+[
+  {
+    "orderId": "ORD-1001",
+    "customerId": "CUST-501",
+    "productName": "Wireless Mouse",
+    "quantity": 2,
+    "price": 19.99,
+    "orderDate": "2026-01-10",
+    "status": "NEW"
+  },
+  {
+    "orderId": "ORD-1002",
+    "customerId": "CUST-502",
+    "productName": "Mechanical Keyboard",
+    "quantity": 1,
+    "price": 89.5,
+    "orderDate": "2026-01-11",
+    "status": "processing"
+  },
+  {
+    "orderId": "ORD-1003",
+    "customerId": "CUST-503",
+    "productName": "USB-C Hub",
+    "quantity": 3,
+    "price": 24.0,
+    "orderDate": "2026-01-12"
+  }
+]

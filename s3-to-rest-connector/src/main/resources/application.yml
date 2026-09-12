@@ -1,0 +1,53 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: s3-to-rest-connector
+
+connector:
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 10000
+    max-retries: 2
+    retry-backoff-ms: 500
+
+  source:
+    s3:
+      bucket: ${SOURCE_S3_BUCKET:connector-orders-bucket}
+      key: ${SOURCE_S3_KEY:}
+      key-prefix: ${SOURCE_S3_KEY_PREFIX:orders/}
+      file-format: ${SOURCE_S3_FILE_FORMAT:CSV}
+
+  target:
+    rest:
+      url: ${TARGET_API_URL:http://localhost:8089/api/orders/relay}
+      method: ${TARGET_API_METHOD:POST}
+      headers:
+        Content-Type: application/json
+      auth:
+        type: ${TARGET_API_AUTH_TYPE:NONE}
+        api-key-header: ${TARGET_API_KEY_HEADER:X-API-Key}
+        api-key-value: ${TARGET_API_KEY_VALUE:}
+        bearer-token: ${TARGET_API_BEARER_TOKEN:}
+        username: ${TARGET_API_USERNAME:}
+        password: ${TARGET_API_PASSWORD:}
+
+  aws:
+    s3:
+      region: ${AWS_REGION:us-east-1}
+      access-key: ${AWS_ACCESS_KEY_ID:}
+      secret-key: ${AWS_SECRET_ACCESS_KEY:}
+      endpoint-override: ${AWS_S3_ENDPOINT_OVERRIDE:}
+      path-style-access-enabled: ${AWS_S3_PATH_STYLE_ACCESS:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    com.example.connectors: DEBUG

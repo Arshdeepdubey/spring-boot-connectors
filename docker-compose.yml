@@ -1,0 +1,55 @@
+version: "3.8"
+
+# Local end-to-end stack for the connectors:
+#   - postgres   : target database for rest-to-db-connector
+#   - localstack : S3-compatible store for rest-to-s3-connector / s3-to-rest-connector
+#   - wiremock   : stands in for the external "source" and "target" REST APIs
+#
+# Run `docker compose up -d`, then start whichever connector(s) you want with
+# `mvn -pl <module> spring-boot:run`. See README.md / docs/RUNBOOK.md for the
+# full walkthrough.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: connectors-postgres
+    environment:
+      POSTGRES_DB: connectors_db
+      POSTGRES_USER: connectors
+      POSTGRES_PASSWORD: connectors
+    ports:
+      - "5432:5432"
+    volumes:
+      - connectors-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U connectors -d connectors_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3.7
+    container_name: connectors-localstack
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: us-east-1
+      TARGET_S3_BUCKET: connector-orders-bucket
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./docker/localstack/init-s3.sh:/etc/localstack/init/ready.d/init-s3.sh
+      - connectors-localstack-data:/var/lib/localstack
+
+  wiremock:
+    image: wiremock/wiremock:3.9.1
+    container_name: connectors-wiremock
+    command: ["--global-response-templating", "--verbose"]
+    ports:
+      - "8089:8080"
+    volumes:
+      - ./docker/wiremock/mappings:/home/wiremock/mappings
+      - ./docker/wiremock/__files:/home/wiremock/__files
+
+volumes:
+  connectors-postgres-data:
+  connectors-localstack-data:

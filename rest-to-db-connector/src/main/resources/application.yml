@@ -1,0 +1,57 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: rest-to-db-connector
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/connectors_db}
+    username: ${DB_USERNAME:connectors}
+    password: ${DB_PASSWORD:connectors}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+connector:
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 10000
+    max-retries: 2
+    retry-backoff-ms: 500
+
+  source:
+    rest:
+      url: ${SOURCE_API_URL:http://localhost:8089/api/orders}
+      method: ${SOURCE_API_METHOD:GET}
+      headers:
+        Accept: application/json
+      auth:
+        type: ${SOURCE_API_AUTH_TYPE:NONE}
+        api-key-header: ${SOURCE_API_KEY_HEADER:X-API-Key}
+        api-key-value: ${SOURCE_API_KEY_VALUE:}
+        bearer-token: ${SOURCE_API_BEARER_TOKEN:}
+        username: ${SOURCE_API_USERNAME:}
+        password: ${SOURCE_API_PASSWORD:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    com.example.connectors: DEBUG
