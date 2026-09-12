@@ -1,0 +1,56 @@
+name: Maven Build and Test
+
+on:
+  push:
+    branches: [ "main", "develop", "feature/**" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Build all modules (skip tests)
+        run: mvn clean install -DskipTests -B -V
+      
+      - name: Run OrderValidator tests
+        run: mvn test -pl common -Dtest=OrderValidatorTest -B
+      
+      - name: Run OrderTransformer tests
+        run: mvn test -pl common -Dtest=OrderTransformerTest -B
+      
+      - name: Run FileConverterService tests
+        run: mvn test -pl common -Dtest=FileConverterServiceImplTest -B
+      
+      - name: Generate test report
+        if: always()
+        run: mvn surefire-report:report -DskipTests -q || true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-java${{ matrix.java-version }}
+          path: '**/target/surefire-reports/'
+      
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-java${{ matrix.java-version }}
+          path: '**/target/*.log'
+

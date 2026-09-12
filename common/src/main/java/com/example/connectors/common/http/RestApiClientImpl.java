@@ -4,10 +4,9 @@ import com.example.connectors.common.exception.ExternalServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -32,11 +31,15 @@ public class RestApiClientImpl implements RestApiClient {
 
     public RestApiClientImpl(HttpClientProperties properties) {
         this.properties = properties;
-        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.DEFAULTS
-                .withConnectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()))
-                .withReadTimeout(Duration.ofMillis(properties.getReadTimeoutMs()));
-        ClientHttpRequestFactory requestFactory = ClientHttpRequestFactories.get(settings);
+        ClientHttpRequestFactory requestFactory = createRequestFactory(properties);
         this.restClient = RestClient.builder().requestFactory(requestFactory).build();
+    }
+
+    private static ClientHttpRequestFactory createRequestFactory(HttpClientProperties properties) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout((int) properties.getConnectTimeoutMs());
+        factory.setReadTimeout((int) properties.getReadTimeoutMs());
+        return factory;
     }
 
     RestApiClientImpl(HttpClientProperties properties, RestClient restClient) {
