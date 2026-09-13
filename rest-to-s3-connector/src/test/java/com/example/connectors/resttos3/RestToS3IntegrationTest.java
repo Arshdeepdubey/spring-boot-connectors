@@ -1,5 +1,6 @@
 package com.example.connectors.resttos3;
 
+import com.example.connectors.common.http.HttpClientProperties;
 import com.example.connectors.common.pipeline.PipelineResult;
 import com.example.connectors.common.pipeline.PipelineStatus;
 import com.example.connectors.common.s3.S3StorageService;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -19,9 +20,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 
 /**
  * Exercises the full wiring (real HTTP client -&gt; validate -&gt; transform -&gt; convert)
@@ -29,6 +27,7 @@ import static org.mockito.Mockito.when;
  * test has no dependency on AWS or LocalStack.
  */
 @SpringBootTest
+@Import(IntegrationTestConfiguration.class)
 class RestToS3IntegrationTest {
 
     private static WireMockServer wireMockServer;
@@ -36,8 +35,16 @@ class RestToS3IntegrationTest {
     @Autowired
     private RestToS3PipelineService pipelineService;
 
-    @MockBean
+    @Autowired
     private S3StorageService s3StorageService;
+
+    @DynamicPropertySource
+    static void dynamicProperties(DynamicPropertyRegistry registry) {
+        registry.add("connector.http.connect-timeout-ms", () -> "5000");
+        registry.add("connector.http.read-timeout-ms", () -> "10000");
+        registry.add("connector.http.max-retries", () -> "2");
+        registry.add("connector.http.retry-backoff-ms", () -> "500");
+    }
 
     @BeforeAll
     static void startWireMock() {
@@ -62,9 +69,6 @@ class RestToS3IntegrationTest {
 
     @Test
     void fetchesValidatesTransformsAndUploads() {
-        when(s3StorageService.upload(anyString(), anyString(), any(byte[].class), anyString()))
-                .thenReturn("orders/orders-test.csv");
-
         PipelineResult result = pipelineService.execute();
 
         assertThat(result.getRecordsRead()).isEqualTo(2);
