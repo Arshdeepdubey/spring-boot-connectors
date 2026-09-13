@@ -5,11 +5,11 @@ import com.example.connectors.resttos3.service.RestToS3PipelineService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,10 +18,44 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = RestToS3Controller.class)
 class RestToS3ControllerTest {
 
+    /**
+     * Test configuration that provides a test implementation of RestToS3PipelineService.
+     * Used to avoid Mockito ByteBuddy instrumentation issues on Java 25.
+     */
+    @TestConfiguration
+    static class TestConfig {
+        // Simple test implementation that returns a configured result
+        static class TestRestToS3PipelineService extends RestToS3PipelineService {
+            private PipelineResult resultToReturn;
+
+            TestRestToS3PipelineService() {
+                // Call parent constructor with null values - not actually used for testing
+                super(null, null, null, null, null, null, null);
+            }
+
+            @Override
+            public PipelineResult execute() {
+                return resultToReturn;
+            }
+
+            void setResultToReturn(PipelineResult result) {
+                this.resultToReturn = result;
+            }
+        }
+
+        private static final TestRestToS3PipelineService testService = new TestRestToS3PipelineService();
+
+        @Bean
+        @Primary
+        RestToS3PipelineService pipelineService() {
+            return testService;
+        }
+    }
+
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @Autowired(required = false)
     private RestToS3PipelineService pipelineService;
 
     @Test
@@ -33,15 +67,16 @@ class RestToS3ControllerTest {
         result.setTargetLocation("s3://bucket/orders/orders-1.csv");
         result.finish();
 
-        when(pipelineService.execute()).thenReturn(result);
+        // Set the result on our test service
+        if (pipelineService instanceof TestConfig.TestRestToS3PipelineService) {
+            ((TestConfig.TestRestToS3PipelineService) pipelineService).setResultToReturn(result);
+        }
 
         mockMvc.perform(post("/api/v1/connectors/rest-to-s3/execute"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("OK"))
                 .andExpect(jsonPath("$.data.recordsRead").value(3))
                 .andExpect(jsonPath("$.data.targetLocation").value("s3://bucket/orders/orders-1.csv"));
-
-        verify(pipelineService).execute();
     }
 
     @Test

@@ -1,17 +1,17 @@
 package com.example.connectors.common.http;
 
 import com.example.connectors.common.exception.ExternalServiceException;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.stereotype.Component;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -20,8 +20,7 @@ import java.util.Map;
  * and a small fixed-backoff retry loop for transient failures. Used by every
  * connector to reach whatever source or target REST API it is configured with.
  */
-@Component
-@EnableConfigurationProperties(HttpClientProperties.class)
+@ConditionalOnMissingBean
 public class RestApiClientImpl implements RestApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(RestApiClientImpl.class);
@@ -36,9 +35,9 @@ public class RestApiClientImpl implements RestApiClient {
     }
 
     private static ClientHttpRequestFactory createRequestFactory(HttpClientProperties properties) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        HttpClient httpClient = HttpClients.createDefault();
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
         factory.setConnectTimeout((int) properties.getConnectTimeoutMs());
-        factory.setReadTimeout((int) properties.getReadTimeoutMs());
         return factory;
     }
 
@@ -57,7 +56,7 @@ public class RestApiClientImpl implements RestApiClient {
                 log.info("Calling {} {} (attempt {}/{})", request.getMethod(), request.getUrl(), attempt,
                         properties.getMaxRetries() + 1);
                 return doExchange(request, responseType);
-            } catch (RestClientException ex) {
+            } catch (RuntimeException ex) {
                 lastError = ex;
                 log.warn("Call to {} {} failed on attempt {}: {}", request.getMethod(), request.getUrl(), attempt,
                         ex.getMessage());

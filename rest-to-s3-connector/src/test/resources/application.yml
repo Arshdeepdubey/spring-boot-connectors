@@ -1,4 +1,9 @@
 connector:
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 10000
+    max-retries: 2
+    retry-backoff-ms: 500
   source:
     rest:
       url: http://localhost:8089/api/orders

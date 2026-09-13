@@ -1,5 +1,12 @@
 package com.example.connectors.s3torest.service;
 
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import com.example.connectors.common.exception.ExternalServiceException;
 import com.example.connectors.common.fileconvert.FileConverterServiceImpl;
 import com.example.connectors.common.fileconvert.FileFormat;
@@ -14,34 +21,54 @@ import com.example.connectors.common.pipeline.PipelineStatus;
 import com.example.connectors.common.s3.S3StorageService;
 import com.example.connectors.s3torest.config.SourceS3Properties;
 import com.example.connectors.s3torest.config.TargetRestProperties;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
-
-@ExtendWith(MockitoExtension.class)
 class S3ToRestPipelineServiceTest {
 
-    @Mock
-    private S3StorageService s3StorageService;
+    public static class MockS3StorageService implements S3StorageService {
+        public byte[] contentToReturn = new byte[0];
 
-    @Mock
-    private RestApiClient restApiClient;
+        @Override
+        public String upload(String bucket, String key, byte[] content, String contentType) {
+            return key;
+        }
 
-    private final FileConverterServiceImpl fileConverterService = new FileConverterServiceImpl();
+        @Override
+        public byte[] download(String bucket, String key) {
+            return contentToReturn;
+        }
+
+        @Override
+        public List<String> listObjectKeys(String bucket, String prefix) {
+            return List.of();
+        }
+
+        @Override
+        public boolean exists(String bucket, String key) {
+            return true;
+        }
+    }
+
+    public static class MockRestApiClient implements RestApiClient {
+        public Object responseToReturn;
+        public RuntimeException exceptionToThrow;
+
+        @Override
+        public <T> T exchange(RestCallRequest request, Class<T> responseType) throws ExternalServiceException {
+            if (exceptionToThrow != null) {
+                if (exceptionToThrow instanceof ExternalServiceException) {
+                    throw (ExternalServiceException) exceptionToThrow;
+                } else {
+                    throw exceptionToThrow;
+                }
+            }
+            return responseType.cast(responseToReturn);
+        }
+    }
 
     private S3ToRestPipelineService pipelineService;
     private SourceS3Properties sourceProperties;
+    private MockS3StorageService mockS3Service;
+    private MockRestApiClient mockRestClient;
 
     @BeforeEach
     void setUp() {
@@ -53,8 +80,11 @@ class S3ToRestPipelineServiceTest {
         TargetRestProperties targetProperties = new TargetRestProperties();
         targetProperties.setUrl("http://target.test/api/orders/relay");
 
+        mockS3Service = new MockS3StorageService();
+        mockRestClient = new MockRestApiClient();
+
         pipelineService = new S3ToRestPipelineService(
-                s3StorageService, restApiClient, fileConverterService,
+                mockS3Service, mockRestClient, new FileConverterServiceImpl(),
                 new OrderValidator(), new OrderTransformer(), sourceProperties, targetProperties);
     }
 
@@ -62,11 +92,11 @@ class S3ToRestPipelineServiceTest {
     void deliversValidOrdersAndSkipsInvalidOnes() {
         OrderRecord valid = order("ORD-1", 2, "4.50");
         OrderRecord invalid = order("ORD-2", -1, "1.00"); // invalid quantity
-        byte[] csv = fileConverterService.convert(
+        byte[] csv = new FileConverterServiceImpl().convert(
                 List.of(OrderMapper.toRow(valid), OrderMapper.toRow(invalid)), FileFormat.CSV, OrderMapper.CSV_COLUMNS);
 
-        when(s3StorageService.download("test-bucket", "orders/orders-1.csv")).thenReturn(csv);
-        when(restApiClient.exchange(any(RestCallRequest.class), eq(String.class))).thenReturn("OK");
+        mockS3Service.contentToReturn = csv;
+        mockRestClient.responseToReturn = "OK";
 
         PipelineResult result = pipelineService.execute();
 
@@ -80,11 +110,10 @@ class S3ToRestPipelineServiceTest {
     @Test
     void deliveryFailureIsRecordedNotThrown() {
         OrderRecord valid = order("ORD-1", 2, "4.50");
-        byte[] csv = fileConverterService.convert(List.of(OrderMapper.toRow(valid)), FileFormat.CSV, OrderMapper.CSV_COLUMNS);
+        byte[] csv = new FileConverterServiceImpl().convert(List.of(OrderMapper.toRow(valid)), FileFormat.CSV, OrderMapper.CSV_COLUMNS);
 
-        when(s3StorageService.download("test-bucket", "orders/orders-1.csv")).thenReturn(csv);
-        when(restApiClient.exchange(any(RestCallRequest.class), eq(String.class)))
-                .thenThrow(new ExternalServiceException("target API returned 500"));
+        mockS3Service.contentToReturn = csv;
+        mockRestClient.exceptionToThrow = new ExternalServiceException("target API returned 500");
 
         PipelineResult result = pipelineService.execute();
 
@@ -99,10 +128,25 @@ class S3ToRestPipelineServiceTest {
     void resolvesLatestKeyWhenNoExplicitKeyConfigured() {
         sourceProperties.setKey(null);
         sourceProperties.setKeyPrefix("orders/");
-        when(s3StorageService.listObjectKeys("test-bucket", "orders/"))
-                .thenReturn(List.of("orders/orders-100.csv", "orders/orders-200.csv"));
-        when(s3StorageService.download("test-bucket", "orders/orders-200.csv"))
-                .thenReturn(fileConverterService.convert(List.of(), FileFormat.CSV, OrderMapper.CSV_COLUMNS));
+        
+        // Create a new mock that returns list of keys
+        class ListingS3StorageService extends MockS3StorageService {
+            @Override
+            public List<String> listObjectKeys(String bucket, String prefix) {
+                return List.of("orders/orders-100.csv", "orders/orders-200.csv");
+            }
+        }
+        
+        mockS3Service = new ListingS3StorageService();
+        mockS3Service.contentToReturn = new FileConverterServiceImpl().convert(List.of(), FileFormat.CSV, OrderMapper.CSV_COLUMNS);
+        
+        pipelineService = new S3ToRestPipelineService(
+                mockS3Service, mockRestClient, new FileConverterServiceImpl(),
+                new OrderValidator(), new OrderTransformer(), sourceProperties, new TargetRestProperties() {{
+                    setUrl("http://target.test/api/orders/relay");
+                }});
+
+        mockRestClient.responseToReturn = "OK";
 
         PipelineResult result = pipelineService.execute();
 
